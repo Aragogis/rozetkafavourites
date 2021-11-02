@@ -4,7 +4,13 @@ const { leave, enter } = Scenes.Stage
 const token = '2094134745:AAENFLbt4bXWCfngzmj-EvMMJg8VdR0nPnc'
 const bot = new Telegraf(token)
 
-
+const { MongoClient } = require('mongodb');
+const uri = "mongodb+srv://admin:admin@cluster0.lnmty.mongodb.net/myFirstDatabase?retryWrites=true&w=majority";
+const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+client.connect(err => {
+    const collection = client.db("test").collection("devices");
+    client.close();
+});
 
 const addFavourite = new Scenes.BaseScene('addFavourite')
 addFavourite.enter((ctx) => ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать'))
@@ -12,7 +18,6 @@ addFavourite.on('message', async (msg) => {
 
     if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
         let link = msg.message.text;
-        console.log(link);
         await msg.reply('Отлично! Товар добавлен')
     } else {
         await msg.reply('Вы ввели некорректную ссылку')
