@@ -19,15 +19,16 @@ addFavourite.on('message', async (msg) => {
     if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
         const link = msg.message.text;
         const userId = msg.message.chat.id;
-        const price = link
+        const price = 'price'
         //  тут должна парсится цена с ссылки link  (1)
-        await msg.reply('Отлично! Товар добавлен')
+
 
         await client.connect()
         const count = await collection.find({userId : userId}).toArray()
         if( count.length === 0) await collection.insertOne({"userId" : userId, "links" : [link], "prices" : [price] })
         else await collection.updateOne({userId : userId}, {$addToSet: {links: link}, $addToSet : {prices : price}})
         await client.close()
+        await msg.reply('Отлично! Товар добавлен')
 
     } else {
         await msg.reply('Вы ввели некорректную ссылку')
