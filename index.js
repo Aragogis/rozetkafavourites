@@ -1,7 +1,29 @@
-const { Telegraf } = require('telegraf')
+const { Telegraf,Scenes, session } = require('telegraf')
+const { leave, enter } = Scenes.Stage
 
 const token = '2094134745:AAENFLbt4bXWCfngzmj-EvMMJg8VdR0nPnc'
 const bot = new Telegraf(token)
+
+
+
+const addFavourite = new Scenes.BaseScene('addFavourite')
+addFavourite.enter((ctx) => ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать'))
+addFavourite.on('message', async (msg) => {
+
+    if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
+        let link = msg.message.text;
+        console.log(link);
+        await msg.reply('Отлично! Товар добавлен')
+    } else {
+        await msg.reply('Вы ввели некорректную ссылку')
+    }
+    await msg.scene.leave();
+})
+
+const stage = new Scenes.Stage([addFavourite]);
+bot.use(session());
+bot.use(stage.middleware());
+
 
 bot.command('info', async (ctx) => {
     await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka')
@@ -16,19 +38,7 @@ bot.command('start', async (ctx) => {
 })
 
 bot.command('add', async (ctx) => {
-    let link;
-    ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать')
-
-    bot.on('message', async (msg) => {
-
-        if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
-            link = msg.message.text;
-            console.log(link);
-            msg.reply('Отлично! Товар добавлен')
-        } else {
-            await msg.reply('Вы ввели некорректную ссылку')
-        }
-    })
+    await  ctx.scene.enter('addFavourite')
 })
 
 
