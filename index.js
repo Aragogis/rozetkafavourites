@@ -19,7 +19,8 @@ addFavourite.on('message', async (msg) => {
     if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
         const link = msg.message.text;
         const userId = msg.message.chat.id;
-        // const price = тут должна парсится цена с ссылки link  (1)
+        const price = link
+        //  тут должна парсится цена с ссылки link  (1)
         await msg.reply('Отлично! Товар добавлен')
 
         await client.connect()
