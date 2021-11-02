@@ -26,7 +26,7 @@ addFavourite.on('message', async (msg) => {
         await client.connect()
         const count = await collection.find({userId : userId}).toArray()
         if( count.length === 0) await collection.insertOne({"userId" : userId, "links" : [link], "prices" : [price] })
-        else await collection.updateOne({userId : userId}, {$addToSet: {links: link}, $addToSet : {prices : price}})
+        else await collection.updateOne({userId : userId}, {$push: {links: link}, $push: {prices : price}}) //эта хуйня пушит только цену, а ссылки игнорит. пиздец
         await client.close()
         await msg.reply('Отлично! Товар добавлен')
 
