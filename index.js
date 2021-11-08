@@ -1,62 +1,166 @@
 // нужно дописать парсинг цены с сайта(1), проверку актуальности цены(2), отправление сообщения пользователю, при изменении цены(3) и возможность удаления ссылок из отслеживаемых(4).
 
-const { Telegraf,Scenes, session } = require('telegraf')
+const { Telegraf,Scenes, session, Markup } = require('telegraf')
 const { leave, enter } = Scenes.Stage
 const { MongoClient } = require('mongodb')
+
+const cheerio = require('cheerio')
+const chalk = require('chalk')
+const puppeteer = require('puppeteer')
+
+const cron = require('node-cron')
+
+const LAUNCH_PUPPETEER_OPTS = {
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920x1080'
+    ]
+};
+const PAGE_PUPPETEER_OPTS = {
+    networkIdle2Timeout: 5000,
+    waitUntil: 'networkidle2',
+    timeout: 3000000
+};
 
 const token = '2094134745:AAENFLbt4bXWCfngzmj-EvMMJg8VdR0nPnc'
 const bot = new Telegraf(token)
 
+//bot.use(Telegraf.log())
 
 const uri = "mongodb+srv://admin:admin@cluster0.lnmty.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true })
 const collection = client.db("TGBot").collection("Users")
 
-const addFavourite = new Scenes.BaseScene('addFavourite')
-addFavourite.enter((ctx) => ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать'))
-addFavourite.on('message', async (msg) => {
+const mainMenu = Markup.keyboard([
+    Markup.button.text('Информация о боте'),
+    Markup.button.text('Список отслеживаемых товаров'),
+    Markup.button.text('Добавить товар в отслеживаемые'),
+    Markup.button.text('Удалить все товары из отслеживаемых'),
+    Markup.button.text('Проверить наличие изменений в ценах')
+]).resize()
 
-    if (msg.message.text.startsWith('https://rozetka.com.ua/')) {
-        const link = msg.message.text;
-        const userId = msg.message.chat.id;
-        const price = 'price'
+
+const addFavourite = new Scenes.BaseScene('addFavourite')
+const stage = new Scenes.Stage([addFavourite])
+bot.use(session())
+bot.use(stage.middleware())
+
+
+bot.hears('Список отслеживаемых товаров', async (ctx) => {
+    const userId = ctx.message.chat.id;
+
+    await client.connect()
+    const count = await collection.find({userId : userId}).forEach(function (user) {user.links.forEach(link => ctx.reply(link))})
+    await client.close()
+})
+
+bot.hears('Информация о боте', async (ctx) => {
+    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka')
+})
+
+bot.hears('Добавить товар в отслеживаемые', async (ctx) => {
+    await  ctx.scene.enter('addFavourite')
+})
+
+bot.hears('Удалить все товары из отслеживаемых', async (ctx) => {
+    const userId = ctx.message.chat.id;
+
+    await client.connect()
+    await collection.deleteOne({userId : userId})
+    await client.close()
+
+    await ctx.reply('Отлично! Товары удалены')
+})
+
+bot.hears('Проверить наличие изменений в ценах', async (ctx) => {
+    await checkForUpdates();
+})
+
+addFavourite.enter((ctx) => ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать'))
+addFavourite.on('message', async (ctx) => {
+    if (ctx.message.text.startsWith('https://rozetka.com.ua/')) {
+        const link = ctx.message.text
+        const userId = ctx.message.chat.id
+        const price = await parse(link);
+        console.log(price);
         //  тут должна парсится цена с ссылки link  (1)
 
 
         await client.connect()
         const count = await collection.find({userId : userId}).toArray()
         if( count.length === 0) await collection.insertOne({"userId" : userId, "links" : [link], "prices" : [price] })
-        else await collection.updateOne({userId : userId}, {$push: {links: link}, $push: {prices : price}}) //эта хуйня пушит только цену, а ссылки игнорит. пиздец
+        else await collection.updateOne({userId : userId}, {$push: { links: link, prices : price }})
         await client.close()
-        await msg.reply('Отлично! Товар добавлен')
+
+        await ctx.reply('Отлично! Товар добавлен')
 
     } else {
-        await msg.reply('Вы ввели некорректную ссылку')
+        await ctx.reply('Вы ввели некорректную ссылку')
     }
-    await msg.scene.leave();
-})
-
-const stage = new Scenes.Stage([addFavourite])
-bot.use(session())
-bot.use(stage.middleware())
-
-
-bot.command('info', async (ctx) => {
-    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka')
+    await ctx.scene.leave()
 })
 
 bot.command('start', async (ctx) => {
-    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka. \nПосле добавления товара для отслеживания, вы будете уведомлены, когда его цена изменится. \nДля добавления товара вызовите команду /add')
-    await  ctx.telegram.setMyCommands([
-        {command: 'info', description: 'Информация о боте'},
-        {command: 'add', description: 'Добавление товара в отслеживаемые'}
-    ])
+    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka. \nПосле добавления товара для отслеживания, вы будете уведомлены, когда его цена изменится. \nДля добавления товара вызовите команду /add', mainMenu)
 })
 
-bot.command('add', async (ctx) => {
-    await  ctx.scene.enter('addFavourite')
+async function checkForUpdates(){
+    let prices = []
+
+    await client.connect()
+
+    for (let user of await collection.find().toArray()) {
+        console.log(user)
+        for (let link of user.links) {
+                prices.push(await parse(link))
+        }
+    }
+
+    await collection.find().forEach(function (user) {
+        let i = 0
+        user.prices.forEach(oldPrice => {
+            if(prices[i] < oldPrice) {
+                bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} сейчас по скидке.\n Успейте купить!`)
+            }
+            else if(prices[i] > oldPrice) {
+                bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} подорожал.`)
+            }
+            i++
+        })
+    })
+    await client.close()
+}
+
+
+async function parse(link)
+{
+        const browser = await puppeteer.launch(LAUNCH_PUPPETEER_OPTS)
+
+        const page = await browser.newPage()
+        await page.goto(link, PAGE_PUPPETEER_OPTS)
+        const pageContent = await page.content()
+        await browser.close()
+
+        const $ =  await cheerio.load(pageContent)
+
+        let price = await $('.product-prices__big').text()
+        price = Number( price.replace(/[^0-9]/g, ''))
+
+        return price
+}
+
+cron.schedule('30 20 * * *', async () => {
+    await checkForUpdates()
+}, {
+    scheduled: true,
+    timezone: "Europe/Kiev"
 })
-
-
 
 bot.launch()
+
+process.once('SIGINT', () => bot.stop('SIGINT'))
+process.once('SIGTERM', () => bot.stop('SIGTERM'))
