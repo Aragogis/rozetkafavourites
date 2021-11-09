@@ -36,11 +36,9 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 const collection = client.db("TGBot").collection("Users")
 
 const mainMenu = Markup.keyboard([
-    Markup.button.text('Информация о боте'),
-    Markup.button.text('Список отслеживаемых товаров'),
     Markup.button.text('Добавить товар в отслеживаемые'),
-    Markup.button.text('Удалить все товары из отслеживаемых'),
-    Markup.button.text('Проверить наличие изменений в ценах')
+    Markup.button.text('Список отслеживаемых товаров'),
+    Markup.button.text('Удалить все товары из отслеживаемых')
 ]).resize()
 
 
@@ -49,6 +47,9 @@ const stage = new Scenes.Stage([addFavourite])
 bot.use(session())
 bot.use(stage.middleware())
 
+/*bot.command('upd', async (ctx) => {
+    await checkForUpdates()
+})*/
 
 bot.hears('Список отслеживаемых товаров', async (ctx) => {
     const userId = ctx.message.chat.id;
@@ -56,10 +57,6 @@ bot.hears('Список отслеживаемых товаров', async (ctx) 
     await client.connect()
     const count = await collection.find({userId : userId}).forEach(function (user) {user.links.forEach(link => ctx.reply(link))})
     await client.close()
-})
-
-bot.hears('Информация о боте', async (ctx) => {
-    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka')
 })
 
 bot.hears('Добавить товар в отслеживаемые', async (ctx) => {
@@ -76,10 +73,6 @@ bot.hears('Удалить все товары из отслеживаемых', 
     await ctx.reply('Отлично! Товары удалены')
 })
 
-bot.hears('Проверить наличие изменений в ценах', async (ctx) => {
-    await checkForUpdates();
-})
-
 addFavourite.enter((ctx) => ctx.reply('Отправьте ссылку на товар, который вы хотите отслеживать'))
 addFavourite.on('message', async (ctx) => {
     if (ctx.message.text.startsWith('https://rozetka.com.ua/')) {
@@ -93,7 +86,7 @@ addFavourite.on('message', async (ctx) => {
         await client.connect()
         const count = await collection.find({userId : userId}).toArray()
         if( count.length === 0) await collection.insertOne({"userId" : userId, "links" : [link], "prices" : [price] })
-        else await collection.updateOne({userId : userId}, {$push: { links: link, prices : price }})
+        else await collection.updateOne({userId : userId}, {$addToSet: { links: link, prices : price }})
         await client.close()
 
         await ctx.reply('Отлично! Товар добавлен')
@@ -105,33 +98,45 @@ addFavourite.on('message', async (ctx) => {
 })
 
 bot.command('start', async (ctx) => {
-    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka. \nПосле добавления товара для отслеживания, вы будете уведомлены, когда его цена изменится. \nДля добавления товара вызовите команду /add', mainMenu)
+    await  ctx.reply('Данный бот предназначен для отслеживания скидок сайта Rozetka. \nПосле добавления товара для отслеживания, вы будете уведомлены, когда его цена изменится.', mainMenu)
 })
 
 async function checkForUpdates(){
-    let prices = []
+    let prices_new = []
 
     await client.connect()
 
     for (let user of await collection.find().toArray()) {
         console.log(user)
         for (let link of user.links) {
-                prices.push(await parse(link))
+                prices_new.push(await parse(link))
         }
     }
 
-    await collection.find().forEach(function (user) {
+    for (let user of await collection.find().toArray()) {
         let i = 0
-        user.prices.forEach(oldPrice => {
-            if(prices[i] < oldPrice) {
-                bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} сейчас по скидке.\n Успейте купить!`)
+        for(let oldPrice of user.prices) {
+            if(prices_new[i] < oldPrice) {
+                await bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} сейчас по скидке.\n Успейте купить!`)
+                await collection.updateOne(
+                    {userId : user.userId},
+                    {$set : {
+                            [`prices.${i}`] : prices_new[i]
+                        }
+                    })
             }
-            else if(prices[i] > oldPrice) {
-                bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} подорожал.`)
+            else if(prices_new[i] > oldPrice) {
+                await bot.telegram.sendMessage(user.userId, `Товар ${user.links[i]} подорожал.`)
+                await collection.updateOne(
+                    {userId : user.userId},
+                    {$set : {
+                            [`prices.${i}`]: prices_new[i]
+                        }
+                    })
             }
             i++
-        })
-    })
+        }
+    }
     await client.close()
 }
 
