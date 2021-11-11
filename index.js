@@ -3,6 +3,7 @@
 const { Telegraf,Scenes, session, Markup } = require('telegraf')
 const { leave, enter } = Scenes.Stage
 const { MongoClient } = require('mongodb')
+const {token} = require('./config.json')
 
 const cheerio = require('cheerio')
 const chalk = require('chalk')
@@ -26,7 +27,6 @@ const PAGE_PUPPETEER_OPTS = {
     timeout: 3000000
 };
 
-const token = '2094134745:AAENFLbt4bXWCfngzmj-EvMMJg8VdR0nPnc'
 const bot = new Telegraf(token)
 
 //bot.use(Telegraf.log())
