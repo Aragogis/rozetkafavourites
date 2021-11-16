@@ -121,14 +121,11 @@ async function checkForUpdates(){
 
     await client.connect()
 
-    for (let user of await collection.find().toArray()) {
-        console.log(user)
-        for (let link of user.links) {
-                prices_new.push(await parse(link))
-        }
-    }
 
     for (let user of await collection.find().toArray()) {
+        for (let link of user.links) {
+            prices_new.push(await parse(link))
+        }
         let i = 0
         for(let oldPrice of user.prices) {
             if(prices_new[i] < oldPrice) {
@@ -151,6 +148,7 @@ async function checkForUpdates(){
             }
             i++
         }
+        prices_new = [];
     }
     await client.close()
 }
