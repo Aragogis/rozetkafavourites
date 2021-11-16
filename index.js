@@ -89,7 +89,7 @@ addFavourite.on('message', async (ctx) => {
         await client.connect()
         const count = await collection.find({userId : userId}).toArray()
         if( count.length === 0) await collection.insertOne({"userId" : userId, "links" : [link], "prices" : [price] })
-        else await collection.updateOne({userId : userId}, {$addToSet: { links: link, prices : price }})
+        else await collection.updateOne({userId : userId}, {$addToSet: { links: link}, $push: { prices : price }})
         await client.close()
 
         await ctx.reply('Отлично! Товар добавлен', Markup.keyboard([
